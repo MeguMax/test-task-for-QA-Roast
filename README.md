@@ -152,6 +152,161 @@ Frontend runs on: `http://localhost:3000`
 
 ---
 
+## Code Highlights
+
+### Backend Architecture
+
+**Type-Safe Controllers**
+
+The backend uses TypeScript interfaces to ensure type safety across the application:
+
+```typescript
+interface QuestionInput {
+  type: string;
+  text: string;
+  options?: string[];
+}
+
+interface CreateQuizInput {
+  title: string;
+  questions: QuestionInput[];
+}
+```
+
+**JSON Serialization for SQLite**
+
+Since SQLite doesn't support JSON fields natively, options are serialized:
+
+```typescript
+// Save: Array → JSON string
+options: q.options ? JSON.stringify(q.options) : null
+
+// Load: JSON string → Array
+options: q.options ? JSON.parse(q.options) : null
+```
+
+**Cascade Delete with Prisma**
+
+The schema ensures related questions are deleted automatically:
+
+```prisma
+model Quiz {
+  questions Question[]
+}
+
+model Question {
+  quiz Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
+}
+```
+
+---
+
+### Frontend Patterns
+
+**Custom Hook Pattern for Toast Notifications**
+
+Instead of browser alerts, a reusable toast component with auto-dismiss:
+
+```typescript
+const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+
+// Usage
+setToast({ message: 'Quiz created!', type: 'success' });
+
+// Auto-dismiss after 3s in Toast component
+useEffect(() => {
+  const timer = setTimeout(() => onClose(), 3000);
+  return () => clearTimeout(timer);
+}, []);
+```
+
+**Dynamic Form State Management**
+
+Questions are managed as an array with dynamic add/remove:
+
+```typescript
+const [questions, setQuestions] = useState<Question[]>([
+  { type: 'boolean', text: '' }
+]);
+
+// Add question
+const addQuestion = () => {
+  setQuestions([...questions, { type: 'boolean', text: '' }]);
+};
+
+// Remove question
+const removeQuestion = (index: number) => {
+  setQuestions(questions.filter((_, i) => i !== index));
+};
+```
+
+**Optimistic UI Updates**
+
+When deleting a quiz, the UI updates immediately without waiting for server confirmation:
+
+```typescript
+const handleDelete = async (id: number) => {
+  try {
+    await api.deleteQuiz(id);
+    setQuizzes(quizzes.filter(q => q.id !== id));  // Immediate removal
+    setToast({ message: 'Quiz deleted', type: 'success' });
+  } catch (error) {
+    setToast({ message: 'Failed to delete', type: 'error' });
+  }
+};
+```
+
+**Controlled Components with Local State**
+
+Each question form maintains its own local state before syncing to parent:
+
+```typescript
+const [localQuestion, setLocalQuestion] = useState<Question>(question);
+
+const handleChange = (field: keyof Question, value: any) => {
+  const updated = { ...localQuestion, [field]: value };
+  setLocalQuestion(updated);
+  onChange(index, updated);  // Sync to parent
+};
+```
+
+---
+
+### Design Decisions
+
+**Why Read-Only Quiz View?**
+
+Per requirements, quiz details are for viewing structure, not for taking the quiz. This keeps the scope focused and allows for future expansion.
+
+**Why Custom Modals Instead of Browser Dialogs?**
+
+Browser `alert()` and `confirm()` are:
+- Not customizable
+- Block JavaScript execution
+- Look outdated
+
+Custom React components provide:
+- Consistent branding
+- Better UX with animations
+- Non-blocking interactions
+
+**Why Tailwind CSS?**
+
+- Rapid prototyping without writing CSS files
+- Consistent design system (spacing, colors)
+- Automatic purging of unused styles
+- Easy responsive design with `sm:`, `md:`, `lg:` prefixes
+
+**API Design Philosophy**
+
+RESTful endpoints with clear separation:
+- `GET /quizzes` returns **summary** (id, title, count)
+- `GET /quizzes/:id` returns **full details** (all questions)
+
+This avoids over-fetching data on the list page.
+
+---
+
 ## Development Scripts
 
 ### Backend
